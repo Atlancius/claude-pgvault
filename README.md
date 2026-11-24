@@ -9,7 +9,8 @@ Le plugin contient :
 
 - l'outil `pgvault` (Python 3.8+, bibliothèque standard, aucune dépendance) ;
 - un skill qui apprend à l'agent à s'en servir correctement ;
-- trois commandes : `/pgvault:doctor`, `/pgvault:list`, `/pgvault:setup` ;
+- trois commandes : `/pgvault:doctor`, `/pgvault:list` et `/pgvault:setup`, qui détecte ta base (locale,
+  Docker ou serveur SSH), trouve un coffre et une clé existants, te fait choisir puis vérifie ;
 - un hook qui bloque les commandes qui afficheraient un secret ou la clé maître.
 
 ## Ce qu'il te faut
@@ -51,7 +52,18 @@ Sous Windows (PowerShell), ajoute `%USERPROFILE%\.pgvault\bin` au PATH : `pgvaul
 
 ## Configuration
 
-Tout passe par des variables d'environnement (voir `.env.example`). Rien n'est écrit en dur.
+Le plus simple : lance `/pgvault:setup` dans Claude Code. À la main :
+
+```sh
+pgvault detect                    # cette machine : psql, PostgreSQL local, conteneurs, coffres, clés, hôtes SSH
+pgvault detect --ssh mon-serveur  # même chose sur un serveur
+pgvault config set PGVAULT_PSQL "docker exec -i mon-postgres psql -U app -d app"
+pgvault config set PGVAULT_KEY_FILE ~/.config/pgvault/vault.key
+pgvault config show
+```
+
+`pgvault config` écrit `~/.config/pgvault/config.env` (droits 600, aucun secret). Les variables
+d'environnement (voir `.env.example`) priment sur ce fichier. Rien n'est écrit en dur.
 
 | Variable | Rôle | Défaut |
 |---|---|---|
@@ -60,6 +72,8 @@ Tout passe par des variables d'environnement (voir `.env.example`). Rien n'est �
 | `PGVAULT_KEY_CMD` | à défaut, commande qui imprime la clé (ex. gestionnaire de mots de passe) | aucun |
 | `PGVAULT_SCHEMA` | schéma du coffre | `vault` |
 | `PGVAULT_TABLE` | table du coffre | `secrets` |
+| `PGVAULT_PGP_OPTIONS` | options `pgp_sym_encrypt` | `cipher-algo=aes256,compress-algo=1` |
+| `PGVAULT_CONFIG` | chemin du fichier de configuration | `~/.config/pgvault/config.env` |
 
 Exemples de `PGVAULT_PSQL` :
 
@@ -123,7 +137,7 @@ imprimerait lui-même son secret : lance seulement des commandes que tu connais.
 ```sql
 CREATE TABLE vault.secrets (
   key text PRIMARY KEY,
-  value_encrypted bytea NOT NULL,       -- pgp_sym_encrypt(valeur, clé, 'cipher-algo=aes256')
+  value_encrypted bytea NOT NULL,       -- pgp_sym_encrypt(valeur, clé, 'cipher-algo=aes256,compress-algo=1')
   description text NOT NULL DEFAULT '',
   expires_at timestamptz,
   source text NOT NULL DEFAULT '',
@@ -147,7 +161,7 @@ colonnes présentes et remplit `source` et les horodatages obligatoires.
 ## Tests
 
 ```sh
-sh tests/run-tests.sh   # crée un PostgreSQL jetable (initdb), 29 vérifications, puis l'arrête
+sh tests/run-tests.sh   # crée un PostgreSQL jetable (initdb), 41 vérifications, puis l'arrête
 ```
 
 ## Licence

@@ -24,3 +24,18 @@
 - Symptôme : longueur 29 attendue 30 ; valeur avec `é` différente après `run`.
 - Cause racine : `${#VAR}` compte des octets dans `sh` ; `print` Python sous Windows sort en cp1252.
 - Correctif : longueur attendue en dur ; l'enfant écrit en UTF-8 sur `sys.stdout.buffer`.
+
+## E4 (2026-11-24) : sous Windows, les sous-commandes passaient par cmd.exe et en CRLF
+
+- Symptôme : `detect --ssh` ne voyait ni Docker ni les conteneurs ; sonde en erreur
+  « syntax error: unexpected word (expecting "do") ».
+- Cause racine : `subprocess.run(..., shell=True)` utilise cmd.exe sous Windows (guillemets simples non
+  compris) ; le mode texte transforme `
+` en `
+` sur l'entrée standard, ce que `sh` refuse.
+- Correctif : toutes les commandes passent par `sh -c` quand `sh` existe (Git Bash), entrée et sortie en
+  octets UTF-8, `
+` normalisé en sortie.
+- Preuve : `detect --ssh` trouve conteneur, bases, coffre et clé ; `doctor` OK depuis Windows en SSH ;
+  41/41 tests.
+- Du premier coup : sous Windows, ne jamais confier une ligne POSIX à `shell=True` ni du texte à stdin.

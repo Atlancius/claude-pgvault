@@ -15,10 +15,10 @@ L'outil `pgvault` lit, écrit et injecte les secrets ; aucune commande agent n'a
 - Codex ou installation manuelle : `pgvault` dans le PATH, sinon `python3 <dépôt>/scripts/pgvault.py`.
 - Windows sans `sh` : `bin\pgvault.cmd`.
 
-Toujours commencer par `pgvault doctor`. S'il échoue, lire la ligne `FAIL` et corriger la configuration
-avant toute autre commande.
+Toujours commencer par `pgvault doctor`. S'il échoue : `/pgvault:setup` (ou `pgvault detect`, puis
+`pgvault detect --ssh <hôte>`) pour trouver la base, le coffre et la clé, avant toute autre commande.
 
-## Configuration (variables d'environnement, jamais en dur)
+## Configuration (variables d'environnement ou `pgvault config set`, jamais en dur)
 
 | Variable | Rôle |
 |---|---|
@@ -26,17 +26,24 @@ avant toute autre commande.
 | `PGVAULT_KEY_FILE` | fichier de la clé maître (droits 600) |
 | `PGVAULT_KEY_CMD` | à défaut, commande qui imprime la clé (gestionnaire de mots de passe) |
 | `PGVAULT_SCHEMA`, `PGVAULT_TABLE` | emplacement du coffre (défaut `vault.secrets`) |
+| `PGVAULT_PGP_OPTIONS` | options pgcrypto (défaut `cipher-algo=aes256,compress-algo=1`) |
+
+`pgvault config set NOM "valeur"` les enregistre dans `~/.config/pgvault/config.env` (aucun secret) ;
+l'environnement prime. `pgvault config show` affiche l'état (mots de passe d'URL masqués).
 
 Exemples de `PGVAULT_PSQL` : `psql "$DATABASE_URL"`, `docker exec -i mon-postgres psql -U app -d app`,
 `ssh mon-serveur docker exec -i mon-postgres psql -U app -d app`.
 
-Si la configuration manque, demander à l'utilisateur où vit sa base et sa clé ; ne jamais deviner un hôte.
+Si la configuration manque, lancer `pgvault detect` (local) ou `pgvault detect --ssh <hôte>` : la commande
+liste conteneurs PostgreSQL, bases, coffres existants et fichiers de clé, et propose `PGVAULT_PSQL`.
+Faire choisir l'utilisateur ; ne jamais deviner un hôte.
 
 ## Gestes
 
 | Besoin | Commande |
 |---|---|
 | état complet | `pgvault doctor` |
+| trouver base, coffre, clé | `pgvault detect [--ssh hôte]` |
 | créer le coffre | `pgvault init` |
 | noms des secrets | `pgvault list [--prefix stripe_]` |
 | un secret existe ? | `pgvault has stripe_secret_key` (longueur seulement) |

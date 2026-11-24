@@ -7,4 +7,5 @@
 - Essais et rendus : [essais/REGISTRE-ESSAIS.md](essais/REGISTRE-ESSAIS.md), recettes
   [essais/RECETTES.md](essais/RECETTES.md), anti-recettes [essais/ANTI-RECETTES.md](essais/ANTI-RECETTES.md).
 - Erreurs rencontrées : [ERREURS.md](ERREURS.md).
+- Compatibilité avec le coffre d'origine : [COMPATIBILITE.md](COMPATIBILITE.md).
 - Historique : [../JOURNAL.md](../JOURNAL.md).

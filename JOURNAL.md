@@ -16,3 +16,13 @@
 - Publié sur la marketplace Ottho Academy (`plugin-pgvault`, étagère agent, cibles Claude et Codex),
   image = aperçu social GitHub du dépôt.
 - Reste : test du hook dans une session Claude réelle (CLI non authentifié au moment du test).
+
+## 2026-11-24 (0.2.0)
+
+- Compatibilité vérifiée avec le coffre d'origine : 78/78 secrets identiques ; écarts listés dans
+  `docs/COMPATIBILITE.md`. Options pgcrypto alignées par défaut (`compress-algo=1`), réglables par
+  `PGVAULT_PGP_OPTIONS`.
+- Nouveau : `pgvault detect [--ssh hôte]`, `pgvault config`, fichier `~/.config/pgvault/config.env`,
+  `/pgvault:setup` guidé par la détection (ADR 0003).
+- Corrigé : E4 (cmd.exe et CRLF sous Windows).
+- Preuves : 41/41 tests ; `detect --ssh` puis `doctor` et `list` OK à distance sur le coffre d'origine.

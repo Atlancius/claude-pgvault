@@ -66,6 +66,30 @@ expect "schéma existant : put" sh -c "printf 'abc' | PGVAULT_SCHEMA=legacy PGVA
 expect "schéma existant : doctor" env PGVAULT_SCHEMA=legacy PGVAULT_TABLE=coffre $PV doctor
 refuse "identifiant SQL invalide" env PGVAULT_TABLE='x;drop' $PV list
 
+# Compatibilité croisée avec un écrivain externe (mêmes options pgcrypto, clé passée en hexadécimal).
+KH=$(printf '%s' "test-master-key-0123456789abcdef" | od -An -tx1 | tr -d ' \n')
+psql -h localhost -p "$PORT" -U pgv -d app -q >/dev/null <<SQL
+INSERT INTO legacy.coffre (key, value_encrypted, source, old_updated_at)
+VALUES ('ext', pgp_sym_encrypt('valeur-externe', convert_from(decode('$KH','hex'),'UTF8'), 'cipher-algo=aes256,compress-algo=1'), 'externe', now());
+SQL
+got=$(PGVAULT_SCHEMA=legacy PGVAULT_TABLE=coffre $PV run --env T=ext -- python -c 'import os,sys; sys.stdout.write(os.environ["T"])')
+[ "$got" = "valeur-externe" ] && ok "lit un secret écrit par un autre outil" || ko "lit un secret écrit par un autre outil"
+got=$(psql -h localhost -p "$PORT" -U pgv -d app -Atc "select pgp_sym_decrypt(value_encrypted, convert_from(decode('$KH','hex'),'UTF8')) from legacy.coffre where key='k1'")
+[ "$got" = "abc" ] && ok "un autre outil lit un secret écrit par pgvault" || ko "un autre outil lit un secret écrit par pgvault"
+
+# Configuration persistante
+export PGVAULT_CONFIG="$W/config.env"
+SAVED_PSQL=$PGVAULT_PSQL; unset PGVAULT_PSQL
+expect "config set" $PV config set PGVAULT_PSQL "$SAVED_PSQL"
+expect "doctor lit le fichier de config" $PV doctor
+case "$($PV config show)" in *"(fichier)"*) ok "config show indique la source";; *) ko "config show indique la source";; esac
+refuse "config refuse une variable inconnue" $PV config set PATH x
+expect "config set URL" $PV config set PGVAULT_KEY_CMD 'psql "postgresql://u:motdepasse@h/db"'
+case "$($PV config show)" in *motdepasse*) ko "config show masque le mot de passe d'URL";; *) ok "config show masque le mot de passe d'URL";; esac
+expect "config unset" $PV config unset PGVAULT_KEY_CMD
+export PGVAULT_PSQL=$SAVED_PSQL; unset PGVAULT_CONFIG
+expect "detect local" $PV detect --json
+
 # Garde-fou (hook PreToolUse)
 g() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$1" | $PV guard >/dev/null 2>&1; }
 refuse "guard bloque reveal" g '"pgvault reveal demo"'
@@ -74,6 +98,8 @@ refuse "guard bloque pgp_sym_decrypt" g '"psql -c \"select pgp_sym_decrypt(v,k)\
 refuse "guard bloque cat de la clé" g '"cat /etc/app/vault.key"'
 expect "guard laisse passer list" g '"pgvault list"'
 expect "guard laisse passer run" g '"pgvault run --env A=b -- node x.js"'
+expect "guard laisse passer config set KEY_CMD" g '"pgvault config set PGVAULT_KEY_CMD \"ssh h cat /etc/x/vault.key\""'
+refuse "guard bloque config chaîné à une lecture" g '"pgvault config show; cat /etc/x/vault.key"'
 
 echo "----- $pass PASS, $fail FAIL"
 [ "$fail" -eq 0 ]

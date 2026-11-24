@@ -20,12 +20,18 @@ import datetime as _dt
 import getpass
 import json
 import os
+import shutil
 import re
 import stat
 import subprocess
 import sys
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
+CONF_VARS = ("PGVAULT_PSQL", "PGVAULT_KEY_FILE", "PGVAULT_KEY_CMD", "PGVAULT_SCHEMA", "PGVAULT_TABLE",
+             "PGVAULT_PGP_OPTIONS")
+# Mêmes options que le coffre de référence : AES-256, compression zlib avant chiffrement.
+DEFAULT_PGP_OPTIONS = "cipher-algo=aes256,compress-algo=1"
+PGP_OPT = re.compile(r"^[a-z0-9-]+=[a-z0-9-]+(,[a-z0-9-]+=[a-z0-9-]+)*$")
 IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 KEYNAME = re.compile(r"^[A-Za-z0-9_.:/@-]{1,200}$")
 
@@ -34,18 +40,70 @@ class VaultError(Exception):
     pass
 
 
+def shell(cmd, **kw):
+    """Lance une ligne de commande dans un shell POSIX (sh), même sous Windows (Git Bash)."""
+    # Octets en entrée et en sortie : sous Windows, le mode texte ajouterait des retours chariot.
+    for k in ("text", "encoding", "errors"):
+        kw.pop(k, None)
+    if isinstance(kw.get("input"), str):
+        kw["input"] = kw["input"].encode("utf-8")
+    sh = shutil.which("sh")
+    argv, use_shell = ([sh, "-c", cmd], False) if sh else (cmd, True)
+    p = subprocess.run(argv, shell=use_shell, **kw)
+    dec = lambda b: b.decode("utf-8", errors="replace").replace("\r\n", "\n") if isinstance(b, bytes) else b
+    p.stdout, p.stderr = dec(p.stdout), dec(p.stderr)
+    return p
+
+
 # ---------------------------------------------------------------- configuration
 
+def conf_path():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.environ.get("PGVAULT_CONFIG") or os.path.join(base, "pgvault", "config.env")
+
+
+def read_conf():
+    """Fichier KEY=VALUE (aucun secret dedans : chemins et commandes seulement)."""
+    out = {}
+    try:
+        with open(conf_path(), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip()
+                if len(v) >= 2 and v[0] == v[-1] == "'":
+                    v = v[1:-1].replace("'\\''", "'")
+                if k in CONF_VARS:
+                    out[k] = v
+    except OSError:
+        pass
+    return out
+
+
+def setting(name, default=""):
+    """Variable d'environnement d'abord, puis fichier de configuration."""
+    v = os.environ.get(name)
+    if v is None:
+        v = read_conf().get(name)
+    return default if v is None else v
+
+
 def cfg():
-    schema = os.environ.get("PGVAULT_SCHEMA", "vault")
-    table = os.environ.get("PGVAULT_TABLE", "secrets")
+    schema = setting("PGVAULT_SCHEMA", "vault")
+    table = setting("PGVAULT_TABLE", "secrets")
+    opts = setting("PGVAULT_PGP_OPTIONS", DEFAULT_PGP_OPTIONS).strip()
+    if not PGP_OPT.match(opts):
+        raise VaultError("PGVAULT_PGP_OPTIONS invalide (ex. cipher-algo=aes256,compress-algo=1)")
     for name, v in (("PGVAULT_SCHEMA", schema), ("PGVAULT_TABLE", table)):
         if not IDENT.match(v):
             raise VaultError(f"{name} invalide : lettres minuscules, chiffres et _ seulement")
     return {
-        "psql": os.environ.get("PGVAULT_PSQL", "psql").strip() or "psql",
-        "key_file": os.environ.get("PGVAULT_KEY_FILE", "").strip(),
-        "key_cmd": os.environ.get("PGVAULT_KEY_CMD", "").strip(),
+        "psql": setting("PGVAULT_PSQL", "psql").strip() or "psql",
+        "key_file": setting("PGVAULT_KEY_FILE").strip(),
+        "key_cmd": setting("PGVAULT_KEY_CMD").strip(),
+        "pgp": opts,
         "fq": f"{schema}.{table}",
         "schema": schema,
         "table": table,
@@ -61,7 +119,7 @@ def load_key(c):
         except OSError as e:
             raise VaultError(f"clé illisible ({e.strerror})") from None
     elif c["key_cmd"]:
-        p = subprocess.run(c["key_cmd"], shell=True, capture_output=True, text=True)
+        p = shell(c["key_cmd"], capture_output=True, text=True)
         if p.returncode != 0:
             raise VaultError("PGVAULT_KEY_CMD a échoué (détail masqué)")
         key = p.stdout.strip()
@@ -91,7 +149,7 @@ def psql(c, sql):
     cmd = c["psql"] + " -X -q -At -v ON_ERROR_STOP=1"
     head = ("\\set QUIET on\n\\set ON_ERROR_STOP on\n\\pset format unaligned\n"
             "\\pset tuples_only on\n\\pset footer off\n")
-    p = subprocess.run(cmd, shell=True, input=head + sql, capture_output=True, text=True, encoding="utf-8")
+    p = shell(cmd, input=head + sql, capture_output=True, text=True, encoding="utf-8")
     if p.returncode != 0:
         raise VaultError("psql : " + (_clean(p.stderr) or f"code {p.returncode}"))
     return [l for l in p.stdout.splitlines() if l != ""]
@@ -242,7 +300,7 @@ def cmd_put(c, a):
     cols = columns(c)
     if not cols:
         raise VaultError(f"table {c['fq']} absente : lancer `pgvault init`")
-    names, vals = ["key", "value_encrypted"], [lit(key), f"pgp_sym_encrypt({lit(value)}, {lit(mk)}, 'cipher-algo=aes256')"]
+    names, vals = ["key", "value_encrypted"], [lit(key), f"pgp_sym_encrypt({lit(value)}, {lit(mk)}, '{c['pgp']}')"]
     if "description" in cols and a.description is not None:
         names.append("description"); vals.append(lit(a.description))
     if "expires_at" in cols and a.expires_at:
@@ -326,6 +384,223 @@ def cmd_reveal(c, a):
     sys.stdout.write(got[a.key] + ("\n" if sys.stdout.isatty() else ""))
 
 
+# ---------------------------------------------------------------- détection et configuration
+
+PG_IMAGES = re.compile(r"postgres|postgis|timescale|supabase|pgvector|paradedb", re.I)
+URL_PASS = re.compile(r"(://[^:/@\s]+):[^@\s]+@")
+
+
+def mask(v):
+    return URL_PASS.sub(r"\1:***@", v)
+
+
+def _sh(cmd, timeout=20):
+    try:
+        p = shell(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", "délai dépassé"
+
+
+def _q(s):
+    """Guillemets simples POSIX."""
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
+# Tables qui ont les deux colonnes d'un coffre pgcrypto (noms seulement, jamais de contenu).
+PROBE_SQL = ("SELECT table_schema || '.' || table_name FROM information_schema.columns "
+             "WHERE column_name IN ('key','value_encrypted') "
+             "AND table_schema NOT IN ('pg_catalog','information_schema') GROUP BY 1 HAVING count(*) = 2 ORDER BY 1")
+
+PROBE_SH = r'''U="${POSTGRES_USER:-postgres}"
+for d in $(psql -U "$U" -d "${POSTGRES_DB:-$U}" -Atc "select datname from pg_database where not datistemplate and datallowconn" 2>/dev/null | head -20); do
+  echo "db $d"
+  psql -U "$U" -d "$d" -At 2>/dev/null <<'SQL' | sed "s/^/vault $d /"
+''' + PROBE_SQL + r''';
+SQL
+done'''
+
+
+def _probe_container(prefix, name):
+    """Bases et tables de coffre d'un conteneur Postgres (noms seulement)."""
+    if prefix:
+        cmd = f"{prefix}{_q('docker exec -i ' + _q(name) + ' sh -s')}"
+    else:
+        cmd = f"docker exec -i {_q(name)} sh -s"
+    try:
+        p = shell(cmd, input=PROBE_SH, capture_output=True, text=True, encoding="utf-8",
+                  errors="replace", timeout=40)
+        out = p.stdout
+    except subprocess.TimeoutExpired:
+        out = ""
+    dbs, vaults = [], []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == "db":
+            dbs.append(parts[1])
+        elif len(parts) == 3 and parts[0] == "vault":
+            vaults.append({"db": parts[1], "table": parts[2]})
+    return dbs, vaults
+
+
+KEY_GLOBS = ("~/.config/pgvault/*.key /etc/*/vault.key /etc/*/*vault*.key "
+             "/root/.config/pgvault/*.key /opt/*/vault.key")
+
+
+def _key_files(prefix):
+    script = (f"for f in {KEY_GLOBS}; do [ -f \"$f\" ] && ls -ld \"$f\"; done 2>/dev/null")
+    cmd = prefix + _q("sh -c " + _q(script)) if prefix else "sh -c " + _q(script)
+    _, out, _ = _sh(cmd, timeout=20)
+    res, seen = [], set()
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 2 or parts[-1] in seen:
+            continue
+        seen.add(parts[-1])
+        res.append({"path": parts[-1], "perms": parts[0], "private": parts[0][4:10] == "------"})
+    return res
+
+
+def _ssh_hosts():
+    hosts = []
+    try:
+        with open(os.path.join(os.path.expanduser("~"), ".ssh", "config"), encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r"^\s*Host\s+(.+)$", line, re.I)
+                if m:
+                    hosts += [h for h in m.group(1).split() if not any(ch in h for ch in "*?!")]
+    except OSError:
+        pass
+    return hosts
+
+
+def detect(ssh_host=""):
+    if ssh_host and not re.match(r"^[A-Za-z0-9_.@-]+$", ssh_host):
+        raise VaultError("nom d'hôte SSH invalide")
+    prefix = f"ssh -o BatchMode=yes -o ConnectTimeout=10 {ssh_host} " if ssh_host else ""
+    r = {"where": f"ssh {ssh_host}" if ssh_host else "local", "psql": False, "local_server": False,
+         "docker": False, "containers": [], "key_files": [], "ssh_hosts": [], "env": {}}
+    run = (lambda s: _sh(prefix + _q(s))) if ssh_host else (lambda s: _sh(s))
+    if ssh_host:
+        rc, _, err = _sh(prefix + "true", timeout=20)
+        if rc != 0:
+            r["error"] = "connexion SSH impossible : " + _clean(err)
+            return r
+    r["psql"] = run("command -v psql >/dev/null 2>&1")[0] == 0
+    r["local_server"] = run("pg_isready -q -h localhost >/dev/null 2>&1")[0] == 0
+    rc, out, _ = run("docker ps --format '{{.Names}}|{{.Image}}'")
+    if rc == 0:
+        r["docker"] = True
+        for line in out.splitlines():
+            if "|" not in line:
+                continue
+            name, image = line.split("|", 1)
+            if PG_IMAGES.search(image):
+                dbs, vaults = _probe_container(prefix, name)
+                r["containers"].append({"name": name, "image": image, "databases": dbs, "vault_tables": vaults})
+    r["key_files"] = _key_files(prefix)
+    if not ssh_host:
+        r["ssh_hosts"] = _ssh_hosts()
+        for v in CONF_VARS + ("DATABASE_URL",):
+            if os.environ.get(v):
+                r["env"][v] = "défini"
+        r["config_file"] = conf_path() if os.path.exists(conf_path()) else ""
+    return r
+
+
+def suggestions(r, ssh_host=""):
+    pre = f"ssh {ssh_host} " if ssh_host else ""
+    out = []
+    for c in r["containers"]:
+        inner = lambda db: f"docker exec -i {c['name']} sh -lc 'psql -U \"$POSTGRES_USER\" -d {db}'"
+        for v in c["vault_tables"]:
+            sch, tab = v["table"].split(".", 1)
+            psql_cmd = (pre + _q(inner(v["db"]))) if pre else inner(v["db"])
+            out.append({"label": f"coffre existant {v['table']} (conteneur {c['name']}, base {v['db']})",
+                        "PGVAULT_PSQL": psql_cmd, "PGVAULT_SCHEMA": sch, "PGVAULT_TABLE": tab})
+        if not c["vault_tables"]:
+            db = c["databases"][0] if c["databases"] else "postgres"
+            psql_cmd = (pre + _q(inner(db))) if pre else inner(db)
+            out.append({"label": f"nouveau coffre dans le conteneur {c['name']} (base {db})",
+                        "PGVAULT_PSQL": psql_cmd})
+    if r["local_server"] and r["psql"]:
+        out.append({"label": "serveur PostgreSQL local" + (f" de {ssh_host}" if ssh_host else ""),
+                    "PGVAULT_PSQL": (pre + _q("psql -h localhost -d postgres")) if pre else "psql -h localhost -d postgres"})
+    if r["env"].get("DATABASE_URL"):
+        out.append({"label": "base de DATABASE_URL", "PGVAULT_PSQL": 'psql "$DATABASE_URL"'})
+    for k in r["key_files"]:
+        k["suggest"] = ({"PGVAULT_KEY_CMD": f"ssh {ssh_host} cat {k['path']}"} if ssh_host
+                        else {"PGVAULT_KEY_FILE": k["path"]})
+    return out
+
+
+def cmd_detect(c, a):
+    r = detect(a.ssh)
+    r["suggestions"] = suggestions(r, a.ssh) if "error" not in r else []
+    if a.json:
+        print(json.dumps(r, ensure_ascii=False, indent=2))
+        return 0 if "error" not in r else 1
+    if "error" in r:
+        print(r["error"])
+        return 1
+    y = lambda b: "oui" if b else "non"
+    print(f"Lieu : {r['where']}")
+    print(f"  psql : {y(r['psql'])} | PostgreSQL local : {y(r['local_server'])} | Docker : {y(r['docker'])}")
+    for ct in r["containers"]:
+        vt = ", ".join(f"{v['db']}:{v['table']}" for v in ct["vault_tables"]) or "aucun coffre"
+        print(f"  conteneur {ct['name']} ({ct['image']}) : bases {', '.join(ct['databases']) or '?'} ; {vt}")
+    for k in r["key_files"]:
+        print(f"  clé trouvée : {k['path']} ({k['perms']}{'' if k['private'] else ', TROP OUVERTE : chmod 600'})")
+    if r.get("ssh_hosts"):
+        print(f"  hôtes SSH connus : {', '.join(r['ssh_hosts'])}")
+    for k in r.get("env", {}):
+        print(f"  variable {k} : définie")
+    if r.get("config_file"):
+        print(f"  configuration : {r['config_file']}")
+    print("Suggestions :" if r["suggestions"] else "Aucune base PostgreSQL détectée ici.")
+    for i, s_ in enumerate(r["suggestions"], 1):
+        print(f"  {i}. {s_['label']}\n     PGVAULT_PSQL={s_['PGVAULT_PSQL']}")
+        if "PGVAULT_TABLE" in s_:
+            print(f"     PGVAULT_SCHEMA={s_['PGVAULT_SCHEMA']}  PGVAULT_TABLE={s_['PGVAULT_TABLE']}")
+    for k in r["key_files"]:
+        (n, v), = k["suggest"].items()
+        print(f"  clé : {n}={v}")
+    return 0
+
+
+def cmd_config(c, a):
+    path = conf_path()
+    if a.action == "path":
+        print(path)
+        return 0
+    cur = read_conf()
+    if a.action == "show":
+        for k in CONF_VARS:
+            src = "env" if os.environ.get(k) is not None else ("fichier" if k in cur else "défaut")
+            val = os.environ.get(k, cur.get(k, ""))
+            print(f"{k}={mask(val)}\t({src})")
+        return 0
+    if a.name not in CONF_VARS:
+        raise VaultError("variable inconnue ; autorisées : " + ", ".join(CONF_VARS))
+    if a.action == "set":
+        if a.value is None or "\n" in a.value:
+            raise VaultError("usage : pgvault config set NOM \"VALEUR sur une ligne\"")
+        cur[a.name] = a.value
+    else:
+        cur.pop(a.name, None)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        f.write("# pgvault : configuration (aucun secret ici). Les variables d'environnement priment.\n")
+        for k in CONF_VARS:
+            if k in cur:
+                f.write(f"{k}={_q(cur[k])}\n")
+    os.replace(tmp, path)
+    print(f"ok : {a.name} {'enregistré' if a.action == 'set' else 'retiré'} ({path})")
+    return 0
+
+
 # ---------------------------------------------------------------- garde-fou agent
 
 GUARD = [
@@ -333,6 +608,8 @@ GUARD = [
     (re.compile(r"PGVAULT_ALLOW_REVEAL"), "PGVAULT_ALLOW_REVEAL est réservé à l'humain"),
     (re.compile(r"pgp_sym_decrypt", re.I), "déchiffrement SQL direct interdit : utilise `pgvault run`"),
 ]
+# `pgvault config set PGVAULT_KEY_CMD "..."` cite légitimement la clé ; une seule commande, sans chaînage.
+CONFIG_CMD = re.compile(r"^\s*[\w./\\:\"'${}-]*pgvault(\.py|\.cmd)?[\"']?\s+(config|detect)\b[^;&|`\n]*$")
 READERS = re.compile(r"\b(cat|type|less|more|head|tail|bat|nl|od|xxd|base64|strings|cp|scp|Get-Content|gc|sed|awk|grep|python3?|node)\b")
 
 
@@ -340,6 +617,8 @@ def guard_decision(command, key_file=""):
     for rx, why in GUARD:
         if rx.search(command):
             return why
+    if CONFIG_CMD.match(command):
+        return None
     names = {"vault.key", "pgvault.key"}
     if key_file:
         names.add(os.path.basename(os.path.expanduser(key_file)))
@@ -393,10 +672,17 @@ def main(argv=None):
     p.add_argument("command", nargs=argparse.REMAINDER)
     p = sub.add_parser("reveal", help="affiche une valeur (humain seulement, PGVAULT_ALLOW_REVEAL=1)")
     p.add_argument("key")
+    p = sub.add_parser("detect", help="détecte psql, PostgreSQL local, conteneurs, coffres et clés (local ou --ssh hôte)")
+    p.add_argument("--ssh", default="", metavar="HOTE")
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("config", help="configuration persistante : show, set, unset, path")
+    p.add_argument("action", choices=["show", "set", "unset", "path"])
+    p.add_argument("name", nargs="?")
+    p.add_argument("value", nargs="?")
     sub.add_parser("guard", help="hook PreToolUse pour agents")
     a = ap.parse_args(argv)
     try:
-        c = cfg() if a.cmd != "guard" else {}
+        c = cfg() if a.cmd not in ("guard", "detect", "config") else {}
         fn = globals()["cmd_" + a.cmd]
         rc = fn(c, a)
         return rc or 0
