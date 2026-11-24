@@ -109,6 +109,14 @@ out=$(cap "corrige le bug du commit 3f2a9c1e5b7d4a6f8e0c2b4d6f8a0c2e4b6d8f0a dan
 [ -z "$out" ] && ok "capture laisse passer un prompt normal" || ko "capture laisse passer un prompt normal"
 out=$(PGVAULT_KEY_FILE="$W/absente.key" cap "tiens $FAKE_GH")
 case "$out" in *'"decision": "block"'*Non\ rang*) ok "capture bloque même si le coffre est indisponible";; *) ko "capture bloque même si le coffre est indisponible";; esac
+mkdir -p "$W/cfg/projects/p"; TR="$W/cfg/projects/p/s.jsonl"
+FAKE_SC="ghp_$(python -c 'import secrets,string;print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(36)))')"
+python -c 'import json,sys; print(json.dumps({"hook_event_name":"UserPromptSubmit","prompt":"tiens "+sys.argv[1],"transcript_path":sys.argv[2]}))' "$FAKE_SC" "$TR" | $PV capture >/dev/null
+printf '{"type":"queue-operation","content":"tiens %s"}\n' "$FAKE_SC" > "$TR"
+printf '{"display":"tiens %s"}\n' "$FAKE_SC" > "$W/cfg/history.jsonl"
+sleep 6
+if grep -q "$FAKE_SC" "$TR" "$W/cfg/history.jsonl"; then ko "nettoyage de la transcription locale"; else ok "nettoyage de la transcription locale"; fi
+grep -q '\[pgvault:github_token' "$TR" && ok "valeur remplacée par le nom" || ko "valeur remplacée par le nom"
 expect "put --verify format inconnu" sh -c "printf 'valeur-sans-format-connu' | $PV put libre --verify"
 
 # Garde-fou (hook PreToolUse)

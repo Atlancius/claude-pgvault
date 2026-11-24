@@ -138,6 +138,13 @@ capturé, sans les valeurs.
 
 Si le coffre n'est pas joignable, le message est quand même bloqué et rien n'est rangé.
 
+Claude Code écrit le message bloqué dans la transcription locale de la session (et dans l'historique des
+prompts) juste après le hook : un petit processus détaché remplace alors la valeur par
+`[pgvault:<nom>]` dans ces fichiers, pendant environ une minute.
+
+Si tu as déjà un autre outil qui masque les secrets dans les prompts avant les hooks, il passe en premier
+et pgvault ne voit que le texte masqué : rien n'est rangé. Garde un seul des deux.
+
 `pgvault put --verify` teste un jeton GitHub, OpenAI, Anthropic ou Stripe auprès du fournisseur avant de
 l'écrire ; s'il est refusé, rien n'est écrit.
 
@@ -181,7 +188,7 @@ colonnes présentes et remplit `source` et les horodatages obligatoires.
 ## Tests
 
 ```sh
-sh tests/run-tests.sh   # crée un PostgreSQL jetable (initdb), 50 vérifications, puis l'arrête
+sh tests/run-tests.sh   # crée un PostgreSQL jetable (initdb), 52 vérifications, puis l'arrête
 ```
 
 ## Licence

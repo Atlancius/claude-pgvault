@@ -39,3 +39,19 @@
 - Preuve : `detect --ssh` trouve conteneur, bases, coffre et clé ; `doctor` OK depuis Windows en SSH ;
   41/41 tests.
 - Du premier coup : sous Windows, ne jamais confier une ligne POSIX à `shell=True` ni du texte à stdin.
+
+## E5 (2026-11-24) : capture inopérante quand un autre masqueur passe avant
+
+- Symptôme : en session réelle, rien n'est rangé ; le modèle reçoit `[REDACTED-SECRET-...]`.
+- Cause racine : un autre plugin chargé par `CLAUDE_CODE_PLUGIN_DIRS` masque les secrets du prompt avant
+  les hooks ; pgvault ne voit plus la valeur.
+- Correctif : documenté (garder un seul masqueur) ; test réel fait sans ce plugin, comme chez un élève.
+- Preuve : sans lui, prompt bloqué, 0 tour, 0 $, valeur rangée à l'identique.
+
+## E6 (2026-11-24) : valeur bloquée restée dans la transcription locale
+
+- Symptôme : après blocage, le jeton figure deux fois dans le fichier `.jsonl` de la session.
+- Cause racine : Claude Code journalise le prompt (file d'attente, message « Original prompt ») après le hook.
+- Correctif : processus détaché `pgvault scrub` qui remplace la valeur par `[pgvault:<nom>]` (transcription
+  et `history.jsonl`).
+- Preuve : session réelle, 0 occurrence restante ; test automatique ajouté.

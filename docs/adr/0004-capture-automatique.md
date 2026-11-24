@@ -26,7 +26,11 @@ dans la transcription.
   prompt depuis ce hook ; seul le blocage garantit que la valeur ne part pas.
 - Détection par entropie seule : trop de faux positifs (empreintes, identifiants).
 
-## Limite
+## Résidu local (vérifié en session réelle, 0.3.1)
 
-Claude Code peut garder le texte saisi dans l'historique local des prompts (flèche haut) ; il ne part pas
-au modèle. À vérifier en session réelle.
+Claude Code écrit le prompt bloqué dans la transcription locale (`queue-operation`, puis message système
+« Original prompt ») après le hook, et peut l'écrire dans `history.jsonl`. Le hook lance un processus
+détaché (`pgvault scrub`, valeurs sur l'entrée standard) qui remplace chaque valeur par `[pgvault:<nom>]`
+dans ces deux fichiers (passages à 1, 3, 8, 20 et 60 s). Vérifié : 0 occurrence restante, 2 remplacements.
+Le message de blocage affiché dans le terminal de l'élève reprend son prompt : c'est son propre écran,
+rien ne part au modèle.

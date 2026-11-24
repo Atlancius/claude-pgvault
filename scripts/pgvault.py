@@ -26,7 +26,7 @@ import stat
 import subprocess
 import sys
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 CONF_VARS = ("PGVAULT_PSQL", "PGVAULT_KEY_FILE", "PGVAULT_KEY_CMD", "PGVAULT_SCHEMA", "PGVAULT_TABLE",
              "PGVAULT_PGP_OPTIONS")
 # Mêmes options que le coffre de référence : AES-256, compression zlib avant chiffrement.
@@ -486,7 +486,65 @@ def cmd_capture(c, a):
     if failed:
         lines.append(f"Non rangé : {failed}. Lance /pgvault:setup, ou range-le dans ton terminal avec "
                      "`pgvault put <nom>` (saisie masquée), puis renvoie ta demande sans la valeur.")
+    spawn_scrub(data.get("transcript_path") or "", [(v, n) for (n, _), (_, v, _) in zip(saved, hits)]
+                + [(v, k) for k, v, _ in hits[len(saved):]])
     print(json.dumps({"decision": "block", "reason": "\n".join(lines)}, ensure_ascii=False))
+    return 0
+
+
+def spawn_scrub(transcript, pairs):
+    """Claude Code écrit le prompt bloqué dans la transcription locale APRÈS le hook. Un processus détaché
+    remplace ensuite chaque valeur par [pgvault:<nom>] (transcription et historique des prompts).
+    Les valeurs passent par l'entrée standard du processus, jamais en argument."""
+    if not transcript or not pairs:
+        return
+    try:
+        kw = {}
+        if os.name == "nt":
+            kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        else:
+            kw["start_new_session"] = True
+        child = subprocess.Popen([sys.executable, os.path.abspath(__file__), "scrub", "--transcript", transcript],
+                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+        child.stdin.write(json.dumps([[v, n] for v, n in pairs]).encode("utf-8"))
+        child.stdin.close()
+    except OSError:
+        pass
+
+
+def _scrub_file(path, pairs):
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return 0
+    n = 0
+    for value, name in pairs:
+        for form in {value, json.dumps(value)[1:-1]}:
+            if form and form in text:
+                n += text.count(form)
+                text = text.replace(form, f"[pgvault:{name}]")
+    if n:
+        tmp = path + ".pgvault.tmp"
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    return n
+
+
+def cmd_scrub(c, a):
+    import time
+    try:
+        pairs = [tuple(x) for x in json.load(sys.stdin)]
+    except (ValueError, OSError):
+        return 1
+    paths = [a.transcript]
+    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(a.transcript))))
+    paths.append(os.path.join(base, "history.jsonl"))
+    total = 0
+    for delay in (1, 3, 8, 20, 60):  # la transcription s'écrit après le hook, parfois en plusieurs fois
+        time.sleep(delay)
+        total += sum(_scrub_file(p_, pairs) for p_ in paths)
     return 0
 
 
@@ -855,9 +913,11 @@ def main(argv=None):
     sub.add_parser("guard", help="hook PreToolUse pour agents")
     sub.add_parser("capture", help="hook UserPromptSubmit : range les secrets d'un prompt et le bloque")
     sub.add_parser("scan", help="détecte les secrets d'un texte (stdin), sans afficher les valeurs")
+    p = sub.add_parser("scrub", help=argparse.SUPPRESS)
+    p.add_argument("--transcript", required=True)
     a = ap.parse_args(argv)
     try:
-        c = cfg() if a.cmd not in ("guard", "detect", "config", "capture", "scan") else {}
+        c = cfg() if a.cmd not in ("guard", "detect", "config", "capture", "scan", "scrub") else {}
         fn = globals()["cmd_" + a.cmd]
         rc = fn(c, a)
         return rc or 0

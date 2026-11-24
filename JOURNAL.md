@@ -37,3 +37,12 @@
   ou capture). Skill : tout jeton produit par une commande passe par pipe dans `pgvault put`.
 - Preuves : 50/50 tests, aucun faux positif sur le texte piège. Reste : hooks en session Claude réelle
   (CLI déconnecté au moment du test).
+
+## 2026-11-24 (0.3.1)
+
+- Hooks testés en vraie session `claude -p` avec le plugin et de faux jetons : capture (prompt bloqué,
+  modèle jamais appelé, valeur rangée à l'identique) et garde-fou (`reveal` et lecture de la clé bloqués,
+  `run` autorisé).
+- Ajout : nettoyage de la transcription locale après capture (`pgvault scrub`, E6). Conflit avec un autre
+  masqueur documenté (E5).
+- Preuves : 52/52 tests ; registre des essais.

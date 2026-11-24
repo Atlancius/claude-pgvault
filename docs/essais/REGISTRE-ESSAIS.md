@@ -16,3 +16,8 @@
 | 2026-11-24 | Détection des secrets v1 | `pgvault scan` sur faux jetons et sur texte piège (empreinte git, UUID, chemin, URL, sha256, base64 court, mot long) | 4/4 détectés, 0 faux positif | retenu |
 | 2026-11-24 | Suite locale v4 (capture) | `sh tests/run-tests.sh` | 50/50 PASS | retenu |
 | 2026-11-24 | Hooks en session Claude réelle | `claude -p` avec le plugin | non joué : CLI déconnecté (`loggedIn: false`) | à refaire |
+| 2026-11-24 | Capture en session réelle v1 | `claude -p` (Claude Code 2.1.295, Haiku), réglages du poste de développement | rien rangé : un masqueur déjà installé passe avant (E5) | expliqué |
+| 2026-11-24 | Capture en session réelle v2 | `claude -p --setting-sources project`, sans plugins tiers, faux `ghp_` | bloqué, 0 tour, 0 $, rangé à l'identique ; jeton resté dans la transcription locale (E6) | corrigé |
+| 2026-11-24 | Capture en session réelle v3 (nettoyage) | idem, faux `sk-proj-` | bloqué, 0 tour, 0 $, rangé à l'identique, 0 occurrence restante dans la transcription | retenu |
+| 2026-11-24 | Garde-fou en session réelle | `claude -p --allowedTools Bash`, `pgvault reveal` et lecture du fichier de clé | les deux bloqués par le hook ; `pgvault run` passe (longueur 62) ; ni jeton ni clé dans la sortie ou la transcription | retenu |
+| 2026-11-24 | Suite locale v5 | `sh tests/run-tests.sh` | 52/52 PASS | retenu |
