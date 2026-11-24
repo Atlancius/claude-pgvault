@@ -46,3 +46,8 @@
 - Ajout : nettoyage de la transcription locale après capture (`pgvault scrub`, E6). Conflit avec un autre
   masqueur documenté (E5).
 - Preuves : 52/52 tests ; registre des essais.
+
+## 2026-11-24 (historique)
+
+- Deux commits fusionnés et poussés en force (accord explicite) pour retirer un prénom resté dans le
+  registre des essais. Aucun changement de contenu.
