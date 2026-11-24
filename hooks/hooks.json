@@ -1,6 +1,13 @@
 {
-  "description": "pgvault : bloque les commandes qui afficheraient un secret ou la clé maître",
+  "description": "pgvault : range au coffre les secrets collés dans un prompt (sans les envoyer au modèle) et bloque les commandes qui afficheraient un secret ou la clé maître",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/pgvault\" capture", "timeout": 60 }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|PowerShell",

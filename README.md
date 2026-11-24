@@ -11,6 +11,8 @@ Le plugin contient :
 - un skill qui apprend à l'agent à s'en servir correctement ;
 - trois commandes : `/pgvault:doctor`, `/pgvault:list` et `/pgvault:setup`, qui détecte ta base (locale,
   Docker ou serveur SSH), trouve un coffre et une clé existants, te fait choisir puis vérifie ;
+- un hook de **capture automatique** : un secret collé dans un message est rangé au coffre et le message
+  est bloqué avant d'atteindre le modèle ;
 - un hook qui bloque les commandes qui afficheraient un secret ou la clé maître.
 
 ## Ce qu'il te faut
@@ -121,6 +123,24 @@ Ne passe jamais une valeur en argument : elle resterait dans l'historique du she
 `pgvault reveal <clé>` affiche une valeur, uniquement si tu poses toi-même `PGVAULT_ALLOW_REVEAL=1`
 dans ton terminal. Le hook du plugin interdit cette commande à l'agent.
 
+## Capture automatique des secrets collés
+
+Colle un jeton dans la conversation (« voici ma clé sk-... ») : le hook `UserPromptSubmit` le détecte, le
+range au coffre sous un nom proposé (`openai_api_key`, `github_token`, `stripe_secret_key`...,
+suffixé `_2`, `_3` si le nom existe), bloque le message avant le modèle et t'affiche le nom. Renvoie ta
+demande en citant ce nom : l'agent l'utilisera par `pgvault run`.
+
+Formats reconnus : `sk-`, `sk-ant-`, `sk_live_`/`sk_test_`/`rk_`, `whsec_`, `ghp_`/`gho_`/`ghs_`/`github_pat_`,
+`glpat-`, `xox*-`, `AKIA`/`ASIA`, `AIza`, `hf_`, JWT, clés privées PEM, `token: ...` / `api_key = ...`, et
+toute chaîne de 32 caractères ou plus, aléatoire (minuscules, majuscules, chiffres, entropie élevée).
+Les empreintes git, UUID, chemins et URL ne sont pas pris. `pgvault scan < fichier` montre ce qui serait
+capturé, sans les valeurs.
+
+Si le coffre n'est pas joignable, le message est quand même bloqué et rien n'est rangé.
+
+`pgvault put --verify` teste un jeton GitHub, OpenAI, Anthropic ou Stripe auprès du fournisseur avant de
+l'écrire ; s'il est refusé, rien n'est écrit.
+
 ## Ce que l'agent peut et ne peut pas faire
 
 | Autorisé | Bloqué par le hook |
@@ -161,7 +181,7 @@ colonnes présentes et remplit `source` et les horodatages obligatoires.
 ## Tests
 
 ```sh
-sh tests/run-tests.sh   # crée un PostgreSQL jetable (initdb), 41 vérifications, puis l'arrête
+sh tests/run-tests.sh   # crée un PostgreSQL jetable (initdb), 50 vérifications, puis l'arrête
 ```
 
 ## Licence

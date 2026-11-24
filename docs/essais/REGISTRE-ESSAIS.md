@@ -13,3 +13,6 @@
 | 2026-11-24 | `detect --ssh` v1 depuis Windows | Git Bash, Python 3.14.3 | Docker non vu (E4) | corrigé |
 | 2026-11-24 | `detect --ssh` v2 + `config set` + `doctor` à distance | `PGVAULT_KEY_CMD` par SSH | coffre, bases, clé trouvés ; doctor OK ; list 78 | retenu |
 | 2026-11-24 | Suite locale v3 | `sh tests/run-tests.sh` | 41/41 PASS | retenu |
+| 2026-11-24 | Détection des secrets v1 | `pgvault scan` sur faux jetons et sur texte piège (empreinte git, UUID, chemin, URL, sha256, base64 court, mot long) | 4/4 détectés, 0 faux positif | retenu |
+| 2026-11-24 | Suite locale v4 (capture) | `sh tests/run-tests.sh` | 50/50 PASS | retenu |
+| 2026-11-24 | Hooks en session Claude réelle | `claude -p` avec le plugin | non joué : CLI déconnecté (`loggedIn: false`) | à refaire |

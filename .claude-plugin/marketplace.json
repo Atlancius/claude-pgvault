@@ -7,7 +7,7 @@
       "name": "pgvault",
       "source": "./",
       "description": "Coffre de secrets PostgreSQL + pgcrypto : lister, écrire, injecter des secrets sans les afficher.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "category": "security"
     }
   ]

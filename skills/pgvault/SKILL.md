@@ -55,8 +55,19 @@ Faire choisir l'utilisateur ; ne jamais deviner un hôte.
 
 La valeur ne doit jamais passer par la conversation ni par un argument de commande.
 
-- L'utilisateur la saisit lui-même dans son terminal : `pgvault put openai_api_key --description "clé projet X"`
-  (saisie masquée), ou `pbpaste | pgvault put ...` / `Get-Clipboard | pgvault put ...`.
+- **Capture automatique** : le plugin installe un hook `UserPromptSubmit`. Si l'utilisateur colle un
+  secret (sk-, sk-ant-, ghp_, github_pat_, xox, AKIA, sk_live_, whsec_, AIza, hf_, JWT, clé privée, ou
+  chaîne longue à forte entropie), le hook le range au coffre, bloque le message avant le modèle et lui
+  affiche le nom choisi. Quand il revient en citant ce nom, utilise `pgvault run --env VAR=<nom> -- ...`.
+- **Secret produit par une de tes commandes** (création ou rotation de jeton, `gh auth token`, réponse
+  d'API) : redirige la sortie directement dans le coffre, sans l'afficher ni la stocker en variable :
+  `gh auth token | pgvault put github_token --description "gh CLI"`,
+  `curl -s ... | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' | pgvault put service_token --expires-at AAAA-MM-JJ`.
+  Jamais `echo`, jamais de fichier intermédiaire, jamais de `tee`.
+
+- L'utilisateur la saisit lui-même dans son terminal : `pgvault put openai_api_key --description "clé projet X" --verify`
+  (saisie masquée ; `--verify` teste le secret auprès de GitHub, OpenAI, Anthropic ou Stripe et n'écrit rien
+  s'il est refusé), ou `pbpaste | pgvault put ...` / `Get-Clipboard | pgvault put ...`.
 - Si la valeur sort d'un programme (rotation d'un jeton), la rediriger directement :
   `nouvelle-commande-qui-imprime-le-jeton | pgvault put meta_token --expires-at 2027-01-15`.
 - Si l'utilisateur colle un secret dans le chat : ne pas le réutiliser, lui dire qu'il est exposé,

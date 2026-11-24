@@ -26,7 +26,7 @@ import stat
 import subprocess
 import sys
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 CONF_VARS = ("PGVAULT_PSQL", "PGVAULT_KEY_FILE", "PGVAULT_KEY_CMD", "PGVAULT_SCHEMA", "PGVAULT_TABLE",
              "PGVAULT_PGP_OPTIONS")
 # Mêmes options que le coffre de référence : AES-256, compression zlib avant chiffrement.
@@ -279,10 +279,78 @@ def cmd_list(c, a):
     print(f"{len(rows)} secret(s)", file=sys.stderr)
 
 
+def store(c, key, value, description=None, expires_at=None, source="pgvault"):
+    """Chiffre et range une valeur. Ne renvoie que sa longueur."""
+    key = check_keyname(key)
+    if not value:
+        raise VaultError("valeur vide : rien n'est écrit")
+    if expires_at:
+        try:
+            _dt.date.fromisoformat(expires_at[:10])
+        except ValueError:
+            raise VaultError("--expires-at attend une date AAAA-MM-JJ") from None
+    mk = load_key(c)
+    cols = columns(c)
+    if not cols:
+        raise VaultError(f"table {c['fq']} absente : lancer `pgvault init`")
+    names, vals = ["key", "value_encrypted"], [lit(key), f"pgp_sym_encrypt({lit(value)}, {lit(mk)}, '{c['pgp']}')"]
+    if "description" in cols and description is not None:
+        names.append("description"); vals.append(lit(description))
+    if "expires_at" in cols and expires_at:
+        names.append("expires_at"); vals.append(lit(expires_at) + "::timestamptz")
+    if "source" in cols:
+        names.append("source"); vals.append(lit(source))
+    for n, meta in cols.items():  # horodatages obligatoires sans défaut (schémas existants)
+        if n in names or n == "expires_at" or not meta["type"].startswith("timestamp"):
+            continue
+        if n == "updated_at" or (not meta["nullable"] and not meta["default"]):
+            names.append(n); vals.append("now()")
+    upd = ", ".join(f"{n} = EXCLUDED.{n}" for n in names if n != "key")
+    psql(c, f"INSERT INTO {c['fq']} ({', '.join(names)}) VALUES ({', '.join(vals)}) "
+            f"ON CONFLICT (key) DO UPDATE SET {upd};\n")
+    return len(value)
+
+
+def exists(c, key):
+    return bool(psql(c, f"SELECT 1 FROM {c['fq']} WHERE key = {lit(check_keyname(key))};\n"))
+
+
+# Vérification en ligne, avant écriture (comme le coffre d'origine : « rien n'est écrit » si refusé).
+VERIFIERS = [
+    ("github", re.compile(r"^(gh[pousr]_|github_pat_)"), "https://api.github.com/user",
+     lambda v: {"Authorization": f"Bearer {v}", "User-Agent": "pgvault"}),
+    ("anthropic", re.compile(r"^sk-ant-"), "https://api.anthropic.com/v1/models",
+     lambda v: {"x-api-key": v, "anthropic-version": "2023-06-01"}),
+    ("openai", re.compile(r"^sk-(?!ant-)"), "https://api.openai.com/v1/models",
+     lambda v: {"Authorization": f"Bearer {v}"}),
+    ("stripe", re.compile(r"^(sk|rk)_(live|test)_"), "https://api.stripe.com/v1/balance",
+     lambda v: {"Authorization": f"Bearer {v}"}),
+]
+
+
+def verify(value):
+    """(fournisseur, None) si accepté ; lève VaultError si refusé ; (None, None) si format inconnu."""
+    import urllib.error
+    import urllib.request
+    for name, rx, url, headers in VERIFIERS:
+        if rx.match(value):
+            req = urllib.request.Request(url, headers=headers(value))
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    if 200 <= r.status < 300:
+                        return name
+            except urllib.error.HTTPError as e:
+                raise VaultError(f"{name} refuse ce secret (HTTP {e.code}) : rien n'est écrit") from None
+            except OSError:
+                raise VaultError(f"{name} injoignable : rien n'est écrit (relancer sans --verify ?)") from None
+            raise VaultError(f"réponse inattendue de {name} : rien n'est écrit")
+    return None
+
+
 def cmd_put(c, a):
     key = check_keyname(a.key)
     if sys.stdin.isatty():
-        value = getpass.getpass(f"valeur de {key} (masquée) : ")
+        value = getpass.getpass(f"valeur de {key} (saisie masquée) : ")
     else:
         value = sys.stdin.read()
         if value.endswith("\r\n"):
@@ -291,31 +359,135 @@ def cmd_put(c, a):
             value = value[:-1]
     if not value:
         raise VaultError("valeur vide : rien n'est écrit")
-    if a.expires_at:
-        try:
-            _dt.date.fromisoformat(a.expires_at[:10])
-        except ValueError:
-            raise VaultError("--expires-at attend une date AAAA-MM-JJ") from None
-    mk = load_key(c)
-    cols = columns(c)
-    if not cols:
-        raise VaultError(f"table {c['fq']} absente : lancer `pgvault init`")
-    names, vals = ["key", "value_encrypted"], [lit(key), f"pgp_sym_encrypt({lit(value)}, {lit(mk)}, '{c['pgp']}')"]
-    if "description" in cols and a.description is not None:
-        names.append("description"); vals.append(lit(a.description))
-    if "expires_at" in cols and a.expires_at:
-        names.append("expires_at"); vals.append(lit(a.expires_at) + "::timestamptz")
-    if "source" in cols:
-        names.append("source"); vals.append(lit("pgvault"))
-    for n, meta in cols.items():  # horodatages obligatoires sans défaut (schémas existants)
-        if n not in names and n != "expires_at" and meta["type"].startswith("timestamp")                 and not meta["nullable"] and not meta["default"]:
-            names.append(n); vals.append("now()")
-        elif n not in names and n == "updated_at":
-            names.append(n); vals.append("now()")
-    upd = ", ".join(f"{n} = EXCLUDED.{n}" for n in names if n != "key")
-    psql(c, f"INSERT INTO {c['fq']} ({', '.join(names)}) VALUES ({', '.join(vals)}) "
-            f"ON CONFLICT (key) DO UPDATE SET {upd};\n")
-    print(f"ok {key} ({len(value)} caractères)")
+    checked = ""
+    if a.verify:
+        who = verify(value)
+        checked = f", vérifié auprès de {who}" if who else ", format inconnu : non vérifié"
+    n = store(c, key, value, a.description, a.expires_at)
+    print(f"ok {key} ({n} caractères{checked})")
+
+
+# ---------------------------------------------------------------- capture des secrets collés dans un prompt
+
+SECRET_PATTERNS = [
+    ("private_key", re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]+?-----END (?:[A-Z]+ )?PRIVATE KEY-----")),
+    ("anthropic_api_key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
+    ("openai_api_key", re.compile(r"\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}")),
+    ("stripe_secret_key", re.compile(r"\b(?:sk|rk)_live_[A-Za-z0-9]{16,}")),
+    ("stripe_test_key", re.compile(r"\b(?:sk|rk)_test_[A-Za-z0-9]{16,}")),
+    ("stripe_webhook_secret", re.compile(r"\bwhsec_[A-Za-z0-9]{20,}")),
+    ("github_token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})")),
+    ("gitlab_token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}")),
+    ("slack_token", re.compile(r"\bxox[abprse]-[A-Za-z0-9-]{10,}")),
+    ("aws_access_key_id", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}")),
+    ("huggingface_token", re.compile(r"\bhf_[A-Za-z0-9]{30,}")),
+    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
+]
+# « token: xxx », « api_key = xxx », « mot de passe : xxx » : la valeur après le signe.
+ASSIGN = re.compile(r"(?i)\b([a-z][a-z0-9_ .-]{0,30}?(?:token|secret|password|passwd|api[_ -]?key|apikey|"
+                    r"mot de passe|clé|cle|key))\s*[:=]\s*[\"']?([^\s\"']{12,})")
+CANDIDATE = re.compile(r"(?<![A-Za-z0-9_/+=.-])[A-Za-z0-9_+/=-]{32,}(?![A-Za-z0-9_/+=.-])")
+
+
+def entropy(s):
+    import math
+    from collections import Counter
+    n = len(s)
+    return -sum(k / n * math.log2(k / n) for k in Counter(s).values()) if n else 0.0
+
+
+def looks_random(s):
+    """Peu de faux positifs : long, varié, pas de l'hexadécimal pur (empreintes git), pas un chemin."""
+    if len(s) < 32 or re.fullmatch(r"[0-9a-fA-F-]+", s) or s.count("/") > 2:
+        return False
+    classes = sum(bool(re.search(p, s)) for p in (r"[a-z]", r"[A-Z]", r"[0-9]"))
+    return classes == 3 and entropy(s) >= 4.3
+
+
+def find_secrets(text):
+    """[(type, valeur, nom suggéré)] sans doublon, dans l'ordre d'apparition."""
+    found, spans = [], []
+
+    def add(kind, value, start, end, hint=""):
+        if any(start < e and end > s for s, e in spans):
+            return
+        spans.append((start, end))
+        found.append((start, kind, value, hint))
+
+    for kind, rx in SECRET_PATTERNS:
+        for m in rx.finditer(text):
+            add(kind, m.group(0), m.start(), m.end())
+    for m in ASSIGN.finditer(text):
+        v = m.group(2)
+        if (len(v) >= 16 and entropy(v) >= 3.5 and not v.startswith(("http", "$", "<", "{"))) or looks_random(v):
+            add("secret", v, m.start(2), m.end(2), m.group(1))
+    for m in CANDIDATE.finditer(text):
+        if looks_random(m.group(0)):
+            add("secret", m.group(0), m.start(), m.end())
+    found.sort()
+    return [(k, v, h) for _, k, v, h in found]
+
+
+def suggest_name(kind, hint):
+    if kind == "secret" and hint:
+        base = re.sub(r"[^a-z0-9]+", "_", hint.lower()).strip("_") or "secret"
+        if not base.endswith(("token", "secret", "key", "password")):
+            base += "_secret"
+        return base[:60]
+    return kind
+
+
+def free_name(c, base, taken):
+    name, i = base, 2
+    while name in taken or exists(c, name):
+        name, i = f"{base}_{i}", i + 1
+    taken.add(name)
+    return name
+
+
+def cmd_scan(c, a):
+    """Test de détection : lit un texte, affiche types et noms proposés, jamais les valeurs."""
+    hits = find_secrets(sys.stdin.read())
+    for kind, value, hint in hits:
+        print(f"{kind}\t{suggest_name(kind, hint)}\t{len(value)} caractères")
+    return 0 if hits else 1
+
+
+def cmd_capture(c, a):
+    """Hook UserPromptSubmit : range au coffre tout secret du prompt, puis bloque le prompt."""
+    try:
+        data = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return 0
+    prompt = data.get("prompt") or ""
+    if not isinstance(prompt, str):
+        return 0
+    hits = find_secrets(prompt)
+    if not hits:
+        return 0
+    today = _dt.date.today().isoformat()
+    saved, failed = [], ""
+    try:
+        cc = cfg()
+        taken = set()
+        for kind, value, hint in hits:
+            name = free_name(cc, suggest_name(kind, hint), taken)
+            store(cc, name, value, f"{kind} capturé depuis un prompt le {today}", source="pgvault-capture")
+            saved.append((name, kind))
+    except VaultError as e:
+        failed = str(e)
+    lines = ["pgvault : ton message contenait un secret. Il n'a PAS été envoyé au modèle."]
+    if saved:
+        lines.append("Rangé au coffre (chiffré) :")
+        lines += [f"  - {n} ({k})" for n, k in saved]
+        lines.append("Renvoie ta demande en citant ce nom au lieu de la valeur, par exemple : "
+                     f"« utilise le secret {saved[0][0]} du coffre ».")
+    if failed:
+        lines.append(f"Non rangé : {failed}. Lance /pgvault:setup, ou range-le dans ton terminal avec "
+                     "`pgvault put <nom>` (saisie masquée), puis renvoie ta demande sans la valeur.")
+    print(json.dumps({"decision": "block", "reason": "\n".join(lines)}, ensure_ascii=False))
+    return 0
 
 
 def cmd_has(c, a):
@@ -660,6 +832,7 @@ def main(argv=None):
     p.add_argument("key")
     p.add_argument("--description", default=None)
     p.add_argument("--expires-at", default=None, help="AAAA-MM-JJ")
+    p.add_argument("--verify", action="store_true", help="vérifie le secret auprès du fournisseur avant d'écrire")
     p = sub.add_parser("has", help="présence et longueur d'un secret")
     p.add_argument("key")
     p = sub.add_parser("expiring", help="secrets qui expirent bientôt")
@@ -680,9 +853,11 @@ def main(argv=None):
     p.add_argument("name", nargs="?")
     p.add_argument("value", nargs="?")
     sub.add_parser("guard", help="hook PreToolUse pour agents")
+    sub.add_parser("capture", help="hook UserPromptSubmit : range les secrets d'un prompt et le bloque")
+    sub.add_parser("scan", help="détecte les secrets d'un texte (stdin), sans afficher les valeurs")
     a = ap.parse_args(argv)
     try:
-        c = cfg() if a.cmd not in ("guard", "detect", "config") else {}
+        c = cfg() if a.cmd not in ("guard", "detect", "config", "capture", "scan") else {}
         fn = globals()["cmd_" + a.cmd]
         rc = fn(c, a)
         return rc or 0

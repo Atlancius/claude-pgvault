@@ -90,6 +90,27 @@ expect "config unset" $PV config unset PGVAULT_KEY_CMD
 export PGVAULT_PSQL=$SAVED_PSQL; unset PGVAULT_CONFIG
 expect "detect local" $PV detect --json
 
+# Capture des secrets collés dans un prompt (hook UserPromptSubmit)
+FAKE_GH="ghp_$(python -c 'import secrets,string;print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(36)))')"
+FAKE_OA="sk-proj-$(python -c 'import secrets;print(secrets.token_urlsafe(30))')"
+FAKE_RAW="$(python -c 'import secrets;print(secrets.token_urlsafe(30))')"
+cap() { python -c 'import json,sys; print(json.dumps({"hook_event_name":"UserPromptSubmit","prompt":sys.argv[1]}))' "$1" | $PV capture; }
+out=$(cap "configure le déploiement avec $FAKE_GH et la clé $FAKE_OA stp")
+case "$out" in *'"decision": "block"'*) ok "capture bloque le prompt";; *) ko "capture bloque le prompt";; esac
+case "$out" in *"$FAKE_GH"*|*"$FAKE_OA"*) ko "capture ne renvoie pas la valeur";; *) ok "capture ne renvoie pas la valeur";; esac
+case "$out" in *github_token*openai_api_key*) ok "capture nomme les clés";; *) ko "capture nomme les clés ($out)";; esac
+got=$($PV run --env T=github_token -- python -c 'import os,sys; sys.stdout.write(os.environ["T"])')
+[ "$got" = "$FAKE_GH" ] && ok "capture a rangé la valeur exacte" || ko "capture a rangé la valeur exacte"
+out=$(cap "encore $FAKE_GH")
+case "$out" in *github_token_2*) ok "capture évite d'écraser un nom";; *) ko "capture évite d'écraser un nom";; esac
+out=$(cap "le secret brut $FAKE_RAW")
+case "$out" in *'"decision": "block"'*) ok "capture par entropie";; *) ko "capture par entropie";; esac
+out=$(cap "corrige le bug du commit 3f2a9c1e5b7d4a6f8e0c2b4d6f8a0c2e4b6d8f0a dans src/app/config.ts")
+[ -z "$out" ] && ok "capture laisse passer un prompt normal" || ko "capture laisse passer un prompt normal"
+out=$(PGVAULT_KEY_FILE="$W/absente.key" cap "tiens $FAKE_GH")
+case "$out" in *'"decision": "block"'*Non\ rang*) ok "capture bloque même si le coffre est indisponible";; *) ko "capture bloque même si le coffre est indisponible";; esac
+expect "put --verify format inconnu" sh -c "printf 'valeur-sans-format-connu' | $PV put libre --verify"
+
 # Garde-fou (hook PreToolUse)
 g() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$1" | $PV guard >/dev/null 2>&1; }
 refuse "guard bloque reveal" g '"pgvault reveal demo"'

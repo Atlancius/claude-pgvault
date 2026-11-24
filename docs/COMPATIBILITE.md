@@ -31,4 +31,5 @@ pgvault lit ; pgvault écrit, un `pgp_sym_decrypt` direct lit).
 | `expires_at` | non renseignée à l'écriture | `--expires-at` | suivi des renouvellements (`expiring`) |
 | Table neuve (`init`) | colonnes historiques de migration (`old_updated_at`, `migrated_at`) | `source`, `updated_at` avec défauts | schéma propre ; pgvault lit et écrit les deux |
 | Commandes | écriture (`vault-put`) et lecture par bibliothèque | `init`, `doctor`, `detect`, `config`, `list`, `has`, `put`, `run`, `expiring`, `rm`, `reveal` | usage agent sans afficher de valeur |
+| Capture | saisie masquée + vérification auprès du fournisseur avant écriture (script dédié par service) ; jetons renouvelés écrits directement par le programme | `put` masqué, `put --verify` (GitHub, OpenAI, Anthropic, Stripe), capture des secrets collés dans un prompt, pipe d'une commande vers `put` | même principe, généralisé |
 | Noms de clé | libres | `[A-Za-z0-9_.:/@-]`, 200 caractères | validation ; tous les noms existants passent |

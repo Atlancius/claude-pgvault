@@ -45,5 +45,17 @@ Tu configures pgvault pour l'utilisateur. Tu détectes d'abord, tu proposes ensu
 8. **Prouver.** `PV doctor` doit finir sur `verdict : OK`, puis `PV list`. En cas de `FAIL`, corrige la
    ligne en cause et recommence (3 essais au plus, puis explique ce qui bloque).
 
-9. **Conclure** en trois lignes : où est le coffre, d'où vient la clé, et le rappel de sauvegarder la clé
-   à part de la base.
+9. **Ranger ses secrets.** Demande (AskUserQuestion, choix multiple) quels secrets il veut ranger
+   maintenant : clé OpenAI (`openai_api_key`), clé Anthropic (`anthropic_api_key`), jeton GitHub
+   (`github_token`), clé Stripe (`stripe_secret_key`), autre (il donne le nom). Pour chacun, deux façons,
+   la première recommandée :
+   - dans **son** terminal, saisie masquée et vérification auprès du fournisseur :
+     `pgvault put <nom> --description "<usage>" --verify` (le chemin complet de `PV` si `pgvault`
+     n'est pas dans son PATH) ; ajoute `--expires-at AAAA-MM-JJ` si le jeton expire ;
+   - ou le coller tel quel dans la conversation : le hook de capture le range au coffre avant que le
+     message n'atteigne le modèle, bloque le message et affiche le nom choisi. Tu ne vois jamais la valeur.
+   Ne lui demande jamais de te donner la valeur autrement. Après chaque ajout, `PV list` pour le montrer.
+
+10. **Conclure** en quatre lignes : où est le coffre, d'où vient la clé, quels secrets sont rangés, le
+    rappel de sauvegarder la clé à part de la base. Dis-lui qu'à partir de maintenant tout secret collé
+    dans un message sera rangé automatiquement, et qu'il suffit ensuite de citer son nom.
