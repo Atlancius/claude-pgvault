@@ -1,0 +1,13 @@
+{
+  "description": "pgvault : bloque les commandes qui afficheraient un secret ou la clé maître",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/pgvault\" guard", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
