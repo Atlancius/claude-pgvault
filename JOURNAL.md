@@ -9,3 +9,10 @@
 - Corrigé : E1, E2, E3 (voir `docs/ERREURS.md`).
 - Preuves : 29/29 tests locaux ; `doctor` OK sur un coffre réel au même format (lecture seule) ;
   `claude plugin validate` OK.
+- Dépôt public `Atlancius/claude-pgvault` créé ; gitleaks (arbre et historique) : aucune fuite ; relecture
+  manuelle : aucune IP, aucun domaine, aucun hôte, aucun nom de conteneur. Commits signés de l'adresse
+  noreply GitHub.
+- Installation testée sur un profil Claude Code vierge et sur un clone Linux propre (voir le registre des essais).
+- Publié sur la marketplace Ottho Academy (`plugin-pgvault`, étagère agent, cibles Claude et Codex),
+  image = aperçu social GitHub du dépôt.
+- Reste : test du hook dans une session Claude réelle (CLI non authentifié au moment du test).
