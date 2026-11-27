@@ -26,7 +26,7 @@ import stat
 import subprocess
 import sys
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 CONF_VARS = ("PGVAULT_PSQL", "PGVAULT_KEY_FILE", "PGVAULT_KEY_CMD", "PGVAULT_SCHEMA", "PGVAULT_TABLE",
              "PGVAULT_PGP_OPTIONS")
 # Mêmes options que le coffre de référence : AES-256, compression zlib avant chiffrement.

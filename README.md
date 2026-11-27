@@ -42,7 +42,18 @@ claude plugin install pgvault@pgvault
 
 Redémarre Claude Code, puis lance `/pgvault:doctor`.
 
-### Codex (ou tout autre agent)
+### Codex
+
+```
+codex plugin marketplace add https://github.com/Atlancius/claude-pgvault.git
+codex plugin add pgvault@pgvault
+```
+
+Le plugin Codex apporte le skill ; les commandes `/pgvault:*` et les hooks de capture et de garde-fou
+sont propres à Claude Code. Pour avoir `pgvault` dans le terminal, ajoute aussi l'outil au PATH (voir
+ci-dessous).
+
+### Installation manuelle (tout autre agent)
 
 ```
 git clone https://github.com/Atlancius/claude-pgvault ~/.pgvault
