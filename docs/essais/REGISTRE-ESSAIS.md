@@ -24,3 +24,5 @@
 | 2026-11-27 | Suite locale v6 (0.3.2) | `sh tests/run-tests.sh`, PostgreSQL 18 `initdb` jetable | 52/52 PASS | retenu |
 | 2026-11-27 | `claude plugin validate --strict` | Claude Code 2.1.295, `.` et `.claude-plugin/plugin.json` | Validation passed (x2) | retenu |
 | 2026-11-27 | Installation Codex depuis le clone | Codex CLI 0.172.0, `CODEX_HOME` jetable, `codex plugin marketplace add <clone>` puis `codex plugin add pgvault@pgvault` | installé en 0.3.2, skill présent ; marketplace racine `path: "./"` acceptée | retenu |
+| 2026-11-27 | Installation Claude Code depuis GitHub (branche) | `CLAUDE_CONFIG_DIR` jetable (chemin court), `claude plugin marketplace add https://github.com/Atlancius/claude-pgvault.git#chore/sans-ottho` puis `claude plugin install pgvault@pgvault` | 0.3.2 activé ; inventaire 4 skills + 2 hooks (`UserPromptSubmit`, `PreToolUse`) | retenu |
+| 2026-11-27 | Installation Codex depuis GitHub (branche) | `CODEX_HOME` jetable, `codex plugin marketplace add https://github.com/Atlancius/claude-pgvault.git --ref chore/sans-ottho` puis `codex plugin add pgvault@pgvault` | `installed, enabled`, 0.3.2 | retenu |
