@@ -1,0 +1,37 @@
+{
+  "name": "pgvault",
+  "version": "0.3.2",
+  "description": "Coffre de secrets PostgreSQL + pgcrypto pour Codex et Claude Code : lister, écrire, injecter des secrets dans une commande sans jamais afficher une valeur.",
+  "author": {
+    "name": "Jeff Martini",
+    "url": "https://github.com/Atlancius/claude-pgvault"
+  },
+  "homepage": "https://github.com/Atlancius/claude-pgvault",
+  "repository": "https://github.com/Atlancius/claude-pgvault",
+  "license": "MIT",
+  "keywords": [
+    "secrets",
+    "vault",
+    "postgresql",
+    "pgcrypto",
+    "security"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "pgvault",
+    "shortDescription": "Tes secrets dans PostgreSQL, jamais affichés à l'agent.",
+    "longDescription": "Coffre de secrets PostgreSQL + pgcrypto pour Codex et Claude Code : lister, écrire, injecter des secrets dans une commande sans jamais afficher une valeur.",
+    "developerName": "Jeff Martini",
+    "category": "Security",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Atlancius/claude-pgvault",
+    "defaultPrompt": [
+      "Vérifie mon coffre de secrets.",
+      "Quels secrets sont dans le coffre ?",
+      "Lance cette commande avec mon jeton GitHub."
+    ]
+  }
+}

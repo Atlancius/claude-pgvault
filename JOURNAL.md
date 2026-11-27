@@ -13,7 +13,7 @@
   manuelle : aucune IP, aucun domaine, aucun hôte, aucun nom de conteneur. Commits signés de l'adresse
   noreply GitHub.
 - Installation testée sur un profil Claude Code vierge et sur un clone Linux propre (voir le registre des essais).
-- Publié sur la marketplace Ottho Academy (`plugin-pgvault`, étagère agent, cibles Claude et Codex),
+- Publié sur une marketplace de formation (`plugin-pgvault`, étagère agent, cibles Claude et Codex),
   image = aperçu social GitHub du dépôt.
 - Reste : test du hook dans une session Claude réelle (CLI non authentifié au moment du test).
 
@@ -51,3 +51,13 @@
 
 - Deux commits fusionnés et poussés en force (accord explicite) pour retirer un prénom resté dans le
   registre des essais. Aucun changement de contenu.
+
+## 2026-11-27 (0.3.2)
+
+- Licence et manifestes au nom de Jeff Martini (`owner`, `author`, copyright MIT) ; plus aucune mention
+  d'Ottho dans l'arbre (l'historique Git n'est pas réécrit).
+- Ajout : manifestes Codex (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, skill
+  seulement) ; README et skill indiquent l'installation Codex.
+- Preuves : 52/52 tests ; `claude plugin validate --strict` vert (marketplace et plugin) ; gitleaks
+  (arbre et historique) : aucune fuite ; installation Codex depuis le clone et installations Claude Code
+  et Codex depuis GitHub dans des profils jetables (registre des essais).

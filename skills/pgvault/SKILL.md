@@ -12,7 +12,8 @@ L'outil `pgvault` lit, écrit et injecte les secrets ; aucune commande agent n'a
 ## Trouver l'outil
 
 - Plugin Claude Code : `"${CLAUDE_PLUGIN_ROOT}/bin/pgvault"` (ou `pgvault` s'il est dans le PATH).
-- Codex ou installation manuelle : `pgvault` dans le PATH, sinon `python3 <dépôt>/scripts/pgvault.py`.
+- Codex ou installation manuelle : `pgvault` dans le PATH, sinon `python3 <racine>/scripts/pgvault.py`
+  (racine = dépôt cloné, ou dossier du plugin Codex, deux niveaux au-dessus de ce skill).
 - Windows sans `sh` : `bin\pgvault.cmd`.
 
 Toujours commencer par `pgvault doctor`. S'il échoue : `/pgvault:setup` (ou `pgvault detect`, puis

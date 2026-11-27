@@ -1,13 +1,17 @@
 {
   "name": "pgvault",
-  "owner": { "name": "Ottho Academy" },
-  "metadata": { "description": "Coffre de secrets PostgreSQL + pgcrypto pour agents" },
+  "owner": {
+    "name": "Jeff Martini"
+  },
+  "metadata": {
+    "description": "Coffre de secrets PostgreSQL + pgcrypto pour agents"
+  },
   "plugins": [
     {
       "name": "pgvault",
       "source": "./",
       "description": "Coffre de secrets PostgreSQL + pgcrypto : lister, écrire, injecter des secrets sans les afficher.",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "category": "security"
     }
   ]

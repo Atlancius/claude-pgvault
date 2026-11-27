@@ -1,0 +1,20 @@
+{
+  "name": "pgvault",
+  "interface": {
+    "displayName": "pgvault"
+  },
+  "plugins": [
+    {
+      "name": "pgvault",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Security"
+    }
+  ]
+}
