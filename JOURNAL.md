@@ -55,7 +55,7 @@
 ## 2026-11-27 (0.3.2)
 
 - Licence et manifestes au nom de Jeff Martini (`owner`, `author`, copyright MIT) ; plus aucune mention
-  d'Ottho dans l'arbre (l'historique Git n'est pas réécrit).
+  de l'ancien nom dans l'arbre (l'historique Git n'est pas réécrit).
 - Ajout : manifestes Codex (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, skill
   seulement) ; README et skill indiquent l'installation Codex.
 - Preuves : 52/52 tests ; `claude plugin validate --strict` vert (marketplace et plugin) ; gitleaks
